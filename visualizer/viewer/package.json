@@ -1,8 +1,9 @@
 {
-  "name": "three-template-2",
+  "name": "truck-packer",
   "version": "1.0.0",
-  "description": "",
-  "keywords": [],
+  "description": "Interactive 3D bin-packing visualizer for truck loading",
+  "homepage": ".",
+  "keywords": ["bin-packing", "3d", "truck-loading"],
   "main": "src/index.js",
   "dependencies": {
     "@types/randomcolor": "^0.5.5",

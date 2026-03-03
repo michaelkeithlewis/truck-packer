@@ -111,6 +111,13 @@ function UploadWizard({ onClose, onPacked }) {
         headers: { "Content-Type": "text/plain" },
         body: csvText,
       });
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          "CSV upload requires the local dev server (npm start). " +
+          "It is not available on static deployments."
+        );
+      }
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Packing failed");
       setPacking(false);
@@ -231,7 +238,7 @@ function App() {
 
   useEffect(() => {
     setFetchError(false);
-    fetch(`/assets/${configFile}`)
+    fetch(`${process.env.PUBLIC_URL}/assets/${configFile}`)
       .then(r => { if (!r.ok) throw new Error(); return r.json(); })
       .then(data => { setStats(computeStats(data)); setFetchError(false); })
       .catch(() => { setStats(null); setFetchError(true); });
@@ -254,7 +261,7 @@ function App() {
 
   return (
     <div className="App">
-      <ThreeScene key={configFile + configVersion} dataSource={`/assets/${configFile}`} />
+      <ThreeScene key={configFile + configVersion} dataSource={`${process.env.PUBLIC_URL}/assets/${configFile}`} />
 
       {showUpload && (
         <UploadWizard
@@ -337,6 +344,11 @@ function App() {
               cursor: "pointer", letterSpacing: 0.3 }}>
             Upload Case List (CSV)
           </button>
+          {process.env.NODE_ENV === "production" && (
+            <div style={{ fontSize: 10, color: "#666", marginTop: 4, textAlign: "center" }}>
+              Requires local dev server for repacking
+            </div>
+          )}
         </div>
 
         <div style={{ borderTop: "1px solid #444", paddingTop: 10, marginTop: 8, fontSize: 12 }}>

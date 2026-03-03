@@ -350,7 +350,7 @@ class ThreeScene extends Component {
 
     };
 
-    const dataUrl = this.props.dataSource || "/assets/containers.json";
+    const dataUrl = this.props.dataSource || (process.env.PUBLIC_URL + "/assets/containers.json");
     http(dataUrl).then(load);
 
     this._pollInterval = setInterval(function(){ 
