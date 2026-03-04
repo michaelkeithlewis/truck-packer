@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "description": "Interactive 3D bin-packing visualizer for truck loading",
   "homepage": ".",
-  "keywords": ["bin-packing", "3d", "truck-loading"],
+  "keywords": [
+    "bin-packing",
+    "3d",
+    "truck-loading"
+  ],
   "main": "src/index.js",
   "dependencies": {
     "@types/randomcolor": "^0.5.5",
@@ -13,6 +17,7 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-scripts": "5.0.1",
+    "serve": "^14.2.6",
     "simplex-noise": "4.0.1",
     "stats-js": "1.0.1",
     "three": "^0.180.0"
