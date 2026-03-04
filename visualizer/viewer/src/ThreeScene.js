@@ -386,6 +386,8 @@ class ThreeScene extends Component {
     document.removeEventListener("keyup", this.onDocumentKeyUp, false);
     document.removeEventListener("click", this.onDocumentClick, false);
     document.removeEventListener("contextmenu", this.onDocumentRightClick, false);
+    if (this._onOptionDown) window.removeEventListener("keydown", this._onOptionDown, false);
+    if (this._onOptionUp) window.removeEventListener("keyup", this._onOptionUp, false);
 
     if (this.mount && this.renderer) {
       this.mount.removeChild(this.renderer.domElement);
@@ -560,6 +562,20 @@ class ThreeScene extends Component {
       RIGHT: 39, // right arrow
       BOTTOM: 40 // down arrow
     };
+
+    // Option/Alt key: switch left-click from orbit to free pan
+    const defaultMouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    const panMouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    controls.mouseButtons = defaultMouseButtons;
+
+    this._onOptionDown = (e) => {
+      if (e.altKey) controls.mouseButtons = panMouseButtons;
+    };
+    this._onOptionUp = (e) => {
+      if (!e.altKey) controls.mouseButtons = defaultMouseButtons;
+    };
+    window.addEventListener("keydown", this._onOptionDown, false);
+    window.addEventListener("keyup", this._onOptionUp, false);
 
     controls.addEventListener("change", () => {
       if (this.renderer) this.renderer.render(this.scene, camera);

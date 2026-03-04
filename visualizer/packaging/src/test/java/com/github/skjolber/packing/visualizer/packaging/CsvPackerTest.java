@@ -118,7 +118,9 @@ public class CsvPackerTest extends AbstractPackagerTest {
 				+ result.getContainers().stream().mapToInt(c -> c.getStack().size()).sum() + " cases");
 
 		DefaultPackagingResultVisualizerFactory p = new DefaultPackagingResultVisualizerFactory(true);
-		File file = new File("../viewer/public/assets/" + filename);
+		File outDir = new File("target/pack-output");
+		outDir.mkdirs();
+		File file = new File(outDir, filename);
 		p.visualize(result.getContainers(), file);
 	}
 
@@ -136,7 +138,7 @@ public class CsvPackerTest extends AbstractPackagerTest {
 
 	@Test
 	public void generateAllConfigs() throws Exception {
-		int[] heights = {2, 3, 0};
+		int[] heights = {1, 2, 3, 0};
 		for (int ct = 0; ct < CONTAINER_CODES.length; ct++) {
 			for (boolean st : new boolean[]{true, false}) {
 				for (boolean nh : new boolean[]{true, false}) {

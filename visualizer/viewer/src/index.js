@@ -162,7 +162,7 @@ function UploadWizard({ onClose, onPacked }) {
       <div style={modal} onClick={e => e.stopPropagation()}>
         <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Upload Case List</div>
         <div style={{ color: "#999", marginBottom: 16, fontSize: 12 }}>
-          CSV columns: Name, Description, Manufacturer, Length, Width, Height, Weight, Category, Flip
+          CSV columns: Name, Description, Manufacturer, Length, Width, Height, Weight, Category, Flip, Can be stacked, Can have item on top
         </div>
 
         <div style={dropZone}
@@ -208,6 +208,22 @@ function UploadWizard({ onClose, onPacked }) {
           </div>
         )}
 
+        {csvRows && csvRows.length > 0 && csvRows.every(r => !r.canBeStacked) && (
+          <div style={{ background: "rgba(255,152,0,0.15)", border: "1px solid #FF9800",
+            borderRadius: 6, padding: "8px 10px", marginBottom: 12, fontSize: 12, color: "#FFB74D" }}>
+            All items have "Can be stacked" = FALSE. Nothing will stack — cases will only go on the ground floor.
+            Set to TRUE for items that can be placed on top of others.
+          </div>
+        )}
+
+        {csvRows && csvRows.length > 0 && csvRows.every(r => !r.canHaveOnTop) && (
+          <div style={{ background: "rgba(255,152,0,0.15)", border: "1px solid #FF9800",
+            borderRadius: 6, padding: "8px 10px", marginBottom: 12, fontSize: 12, color: "#FFB74D" }}>
+            All items have "Can have item on top" = FALSE. Nothing can support another case.
+            Set to TRUE for items that can bear weight on top.
+          </div>
+        )}
+
         {error && <div style={{ color: "#ff6b6b", marginBottom: 12, fontSize: 12 }}>{error}</div>}
 
         <div style={{ display: "flex", alignItems: "center" }}>
@@ -234,14 +250,15 @@ function App() {
   const [showUpload, setShowUpload] = useState(false);
   const [configVersion, setConfigVersion] = useState(0);
   const [fetchError, setFetchError] = useState(false);
+  const [repacking, setRepacking] = useState(false);
   const configFile = getConfigFile(containerType, sameType, noOverhang, groupCat, maxHeight);
 
   useEffect(() => {
     setFetchError(false);
     fetch(`${process.env.PUBLIC_URL}/assets/${configFile}`)
       .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-      .then(data => { setStats(computeStats(data)); setFetchError(false); })
-      .catch(() => { setStats(null); setFetchError(true); });
+      .then(data => { setStats(computeStats(data)); setFetchError(false); setRepacking(false); })
+      .catch(() => { setStats(null); setFetchError(true); setRepacking(false); });
   }, [configFile, configVersion]);
 
   const panelStyle = {
@@ -266,8 +283,25 @@ function App() {
       {showUpload && (
         <UploadWizard
           onClose={() => setShowUpload(false)}
-          onPacked={() => setConfigVersion(v => v + 1)}
+          onPacked={() => { setRepacking(true); setConfigVersion(v => v + 1); }}
         />
+      )}
+
+      {repacking && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 999,
+          background: "rgba(0,0,0,0.85)", display: "flex",
+          alignItems: "center", justifyContent: "center", flexDirection: "column",
+          backdropFilter: "blur(6px)",
+        }}>
+          <div style={{ color: "#4fc3f7", fontSize: 18, fontWeight: 600, marginBottom: 12,
+            fontFamily: "'Inter', -apple-system, sans-serif" }}>
+            Repacking cases...
+          </div>
+          <div style={{ color: "#888", fontSize: 13, fontFamily: "'Inter', -apple-system, sans-serif" }}>
+            Loading updated configuration
+          </div>
+        </div>
       )}
 
       <div style={panelStyle}>
@@ -314,6 +348,7 @@ function App() {
           <span>Max stack height:</span>
           <select value={maxHeight} onChange={e => setMaxHeight(Number(e.target.value))}
             style={selectStyle}>
+            <option value={1}>1 high (ground only)</option>
             <option value={2}>2 high</option>
             <option value={3}>3 high</option>
             <option value={0}>No limit</option>
