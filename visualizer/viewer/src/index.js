@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createRoot } from 'react-dom/client';
 import ThreeScene from "./ThreeScene";
+import { packItems } from "./packer";
 import "./styles.css";
 
 const CONTAINER_TYPES = [
-  { code: "53ft", label: "53ft Semi Trailer", dims: "624 × 100 × 110 in" },
-  { code: "48ft", label: "48ft Semi Trailer", dims: "576 × 100 × 110 in" },
-  { code: "26ft", label: "26ft Box Truck",    dims: "312 × 96 × 96 in" },
-  { code: "sprinter", label: "Sprinter Van",  dims: "170 × 70 × 64 in" },
+  { code: "53ft", label: "53ft Semi Trailer", dims: "624 × 100 × 110 in", dx: 624, dy: 100, dz: 110, maxWeight: 45000 },
+  { code: "48ft", label: "48ft Semi Trailer", dims: "576 × 100 × 110 in", dx: 576, dy: 100, dz: 110, maxWeight: 45000 },
+  { code: "26ft", label: "26ft Box Truck",    dims: "312 × 96 × 96 in",   dx: 312, dy: 96,  dz: 96,  maxWeight: 26000 },
+  { code: "sprinter", label: "Sprinter Van",  dims: "170 × 70 × 64 in",   dx: 170, dy: 70,  dz: 64,  maxWeight: 5000 },
 ];
 
 function getConfigFile(containerType, sameType, noOverhang, groupCat, maxHeight) {
@@ -75,11 +76,24 @@ function parseCsv(text) {
   return rows;
 }
 
+function csvRowsToPackerItems(rows) {
+  return rows.map((r, idx) => ({
+    name: r.name,
+    caseType: r.name,
+    category: r.category,
+    dx: r.length,
+    dy: r.width,
+    dz: r.height,
+    weight: r.weight,
+    flip: r.flip,
+    canBeStacked: r.canBeStacked,
+    canHaveOnTop: r.canHaveOnTop,
+  }));
+}
+
 function UploadWizard({ onClose, onPacked }) {
   const [csvRows, setCsvRows] = useState(null);
-  const [csvText, setCsvText] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  const [packing, setPacking] = useState(false);
   const [error, setError] = useState(null);
   const fileRef = useRef(null);
 
@@ -88,7 +102,6 @@ function UploadWizard({ onClose, onPacked }) {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target.result;
-      setCsvText(text);
       setCsvRows(parseCsv(text));
       setError(null);
     };
@@ -102,31 +115,10 @@ function UploadWizard({ onClose, onPacked }) {
     if (file) handleFile(file);
   }, [handleFile]);
 
-  const handlePack = async () => {
-    setPacking(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/upload-csv", {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: csvText,
-      });
-      const contentType = res.headers.get("content-type") || "";
-      if (!contentType.includes("application/json")) {
-        throw new Error(
-          "CSV upload requires the local dev server (npm start). " +
-          "It is not available on static deployments."
-        );
-      }
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Packing failed");
-      setPacking(false);
-      onPacked();
-      onClose();
-    } catch (err) {
-      setError(err.message);
-      setPacking(false);
-    }
+  const handlePack = () => {
+    if (!csvRows || csvRows.length === 0) return;
+    onPacked(csvRows);
+    onClose();
   };
 
   const overlay = {
@@ -150,7 +142,7 @@ function UploadWizard({ onClose, onPacked }) {
   const btnPrimary = {
     background: "#4fc3f7", color: "#000", border: "none", borderRadius: 6,
     padding: "8px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-    marginRight: 8, opacity: packing ? 0.6 : 1,
+    marginRight: 8,
   };
   const btnSecondary = {
     background: "#333", color: "#fff", border: "1px solid #555",
@@ -227,13 +219,10 @@ function UploadWizard({ onClose, onPacked }) {
         {error && <div style={{ color: "#ff6b6b", marginBottom: 12, fontSize: 12 }}>{error}</div>}
 
         <div style={{ display: "flex", alignItems: "center" }}>
-          {csvRows && (
-            <button style={btnPrimary} onClick={handlePack} disabled={packing}>
-              {packing ? "Packing cases..." : "Pack Cases"}
-            </button>
+          {csvRows && csvRows.length > 0 && (
+            <button style={btnPrimary} onClick={handlePack}>Pack Cases</button>
           )}
           <button style={btnSecondary} onClick={onClose}>Cancel</button>
-          {packing && <span style={{ marginLeft: 12, color: "#999", fontSize: 11 }}>Running bin packer (may take ~15s)...</span>}
         </div>
       </div>
     </div>
@@ -248,18 +237,46 @@ function App() {
   const [maxHeight, setMaxHeight] = useState(3);
   const [stats, setStats] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
-  const [configVersion, setConfigVersion] = useState(0);
   const [fetchError, setFetchError] = useState(false);
-  const [repacking, setRepacking] = useState(false);
-  const configFile = getConfigFile(containerType, sameType, noOverhang, groupCat, maxHeight);
 
+  // Uploaded CSV rows (null = use pre-built configs)
+  const [uploadedRows, setUploadedRows] = useState(null);
+
+  const configFile = getConfigFile(containerType, sameType, noOverhang, groupCat, maxHeight);
+  const ct = CONTAINER_TYPES.find(c => c.code === containerType) || CONTAINER_TYPES[0];
+
+  // Client-side packed data when user has uploaded a CSV
+  const packedData = useMemo(() => {
+    if (!uploadedRows) return null;
+    const items = csvRowsToPackerItems(uploadedRows);
+    const container = { name: ct.label, dx: ct.dx, dy: ct.dy, dz: ct.dz, maxWeight: ct.maxWeight };
+    const rules = { sameType, noOverhang, groupCat, maxHeight };
+    return packItems(items, container, rules);
+  }, [uploadedRows, containerType, sameType, noOverhang, groupCat, maxHeight, ct]);
+
+  // Compute stats for whichever data source is active
   useEffect(() => {
-    setFetchError(false);
-    fetch(`${process.env.PUBLIC_URL}/assets/${configFile}`)
-      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-      .then(data => { setStats(computeStats(data)); setFetchError(false); setRepacking(false); })
-      .catch(() => { setStats(null); setFetchError(true); setRepacking(false); });
-  }, [configFile, configVersion]);
+    if (packedData) {
+      setStats(computeStats(packedData));
+      setFetchError(false);
+    } else {
+      setFetchError(false);
+      fetch(`${process.env.PUBLIC_URL}/assets/${configFile}`)
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(data => { setStats(computeStats(data)); setFetchError(false); })
+        .catch(() => { setStats(null); setFetchError(true); });
+    }
+  }, [configFile, packedData]);
+
+  // Unique categories from uploaded data for the legend
+  const categories = useMemo(() => {
+    if (uploadedRows) {
+      const cats = [...new Set(uploadedRows.map(r => r.category))];
+      const defaultColors = ["#2979FF","#FF1744","#00E676","#FF9100","#AA00FF","#00BCD4","#FFEA00","#FF6D00"];
+      return cats.map((cat, i) => [cat, defaultColors[i % defaultColors.length]]);
+    }
+    return [["PA","#2979FF"],["Amps","#FF1744"],["Control","#00E676"],["RF","#FF9100"]];
+  }, [uploadedRows]);
 
   const panelStyle = {
     position: "absolute", zIndex: 10, top: 12, left: 12,
@@ -276,32 +293,23 @@ function App() {
     borderRadius: 4, padding: "3px 6px", fontSize: 13, cursor: "pointer",
   };
 
+  const sceneKey = packedData
+    ? `custom-${containerType}-${sameType}-${noOverhang}-${groupCat}-${maxHeight}`
+    : configFile;
+
   return (
     <div className="App">
-      <ThreeScene key={configFile + configVersion} dataSource={`${process.env.PUBLIC_URL}/assets/${configFile}`} />
+      {packedData ? (
+        <ThreeScene key={sceneKey} data={packedData} />
+      ) : (
+        <ThreeScene key={sceneKey} dataSource={`${process.env.PUBLIC_URL}/assets/${configFile}`} />
+      )}
 
       {showUpload && (
         <UploadWizard
           onClose={() => setShowUpload(false)}
-          onPacked={() => { setRepacking(true); setConfigVersion(v => v + 1); }}
+          onPacked={(rows) => setUploadedRows(rows)}
         />
-      )}
-
-      {repacking && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 999,
-          background: "rgba(0,0,0,0.85)", display: "flex",
-          alignItems: "center", justifyContent: "center", flexDirection: "column",
-          backdropFilter: "blur(6px)",
-        }}>
-          <div style={{ color: "#4fc3f7", fontSize: 18, fontWeight: 600, marginBottom: 12,
-            fontFamily: "'Inter', -apple-system, sans-serif" }}>
-            Repacking cases...
-          </div>
-          <div style={{ color: "#888", fontSize: 13, fontFamily: "'Inter', -apple-system, sans-serif" }}>
-            Loading updated configuration
-          </div>
-        </div>
       )}
 
       <div style={panelStyle}>
@@ -355,7 +363,7 @@ function App() {
           </select>
         </div>
 
-        {fetchError && (
+        {fetchError && !packedData && (
           <div style={{ background: "rgba(255,107,107,0.15)", border: "1px solid #ff6b6b",
             borderRadius: 6, padding: "8px 10px", marginBottom: 10, fontSize: 12, color: "#ff6b6b" }}>
             Config not available for this combination. Cases may not fit in this container.
@@ -379,16 +387,18 @@ function App() {
               cursor: "pointer", letterSpacing: 0.3 }}>
             Upload Case List (CSV)
           </button>
-          {process.env.NODE_ENV === "production" && (
-            <div style={{ fontSize: 10, color: "#666", marginTop: 4, textAlign: "center" }}>
-              Requires local dev server for repacking
-            </div>
+          {uploadedRows && (
+            <button onClick={() => setUploadedRows(null)}
+              style={{ width: "100%", background: "#333", color: "#fff", border: "1px solid #555",
+                borderRadius: 6, padding: "6px 0", fontSize: 12, cursor: "pointer", marginTop: 6 }}>
+              Reset to default cases
+            </button>
           )}
         </div>
 
         <div style={{ borderTop: "1px solid #444", paddingTop: 10, marginTop: 8, fontSize: 12 }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>CATEGORIES</div>
-          {[["PA","#2979FF"],["Amps","#FF1744"],["Control","#00E676"],["RF","#FF9100"]].map(([cat, col]) => (
+          {categories.map(([cat, col]) => (
             <div key={cat} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
               <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 2, background: col, flexShrink: 0 }} />
               <span>{cat}</span>
@@ -397,7 +407,7 @@ function App() {
         </div>
 
         <div style={{ fontSize: 11, color: "#888", borderTop: "1px solid #444", paddingTop: 8, marginTop: 8 }}>
-          Click box for info &middot; Right-click to fit camera
+          Click box for info &middot; Option+drag to pan
         </div>
       </div>
     </div>

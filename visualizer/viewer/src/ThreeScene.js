@@ -350,12 +350,12 @@ class ThreeScene extends Component {
 
     };
 
-    const dataUrl = this.props.dataSource || (process.env.PUBLIC_URL + "/assets/containers.json");
-    http(dataUrl).then(load);
-
-    this._pollInterval = setInterval(function(){ 
+    if (this.props.data) {
+      load(this.props.data);
+    } else {
+      const dataUrl = this.props.dataSource || (process.env.PUBLIC_URL + "/assets/containers.json");
       http(dataUrl).then(load);
-    }, 500);
+    }
   };
 
   start = () => {
